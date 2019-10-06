@@ -9,6 +9,10 @@
 #include "sort.h"
 #include "utils.h"
 
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+
 void cpu_sort(unsigned int* h_out, unsigned int* h_in, size_t len)
 {
     for (int i = 0; i < len; ++i)
@@ -43,6 +47,27 @@ void test_cpu_vs_gpu(unsigned int* h_in, unsigned int num_elems)
     checkCudaErrors(cudaMemcpy(h_out_gpu, d_out, sizeof(unsigned int) * num_elems, cudaMemcpyDeviceToHost));
     checkCudaErrors(cudaFree(d_out));
     checkCudaErrors(cudaFree(d_in));
+
+    cudaEvent_t event_start, stop;
+    cudaEventCreate(&event_start);
+    cudaEventCreate(&stop);
+
+    unsigned int* d_thrust_in;
+    checkCudaErrors( cudaMalloc(&d_thrust_in, sizeof(unsigned int) * num_elems) );
+    checkCudaErrors( cudaMemcpy(d_thrust_in, h_in, sizeof(unsigned int) * num_elems, cudaMemcpyHostToDevice) );
+
+    thrust::device_ptr<unsigned int> d_ptr_in(d_thrust_in);
+
+    cudaEventRecord(event_start);
+    thrust::sort(d_ptr_in, d_ptr_in + num_elems);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, event_start, stop);
+    milliseconds /= 1000.0;
+    std::cout << "Thrust time is " << milliseconds << std::endl;
+    std::cout << "Thrust Speedup cpu " << cpu_duration / milliseconds << "x" << std::endl; 
+    std::cout << "Thrust Speedup 4-way " << gpu_duration / milliseconds << "x" << std::endl;
 
     // Calculate GPU / CPU speedup
     std::cout << "Speedup: " << cpu_duration / gpu_duration << "x" << std::endl;
@@ -93,7 +118,7 @@ int main()
     // Set up clock for timing comparisons
     srand(1);
 
-    for (int i = 27; i < 28; ++i)
+    for (int i = 20; i < 21; ++i)
     {
         unsigned int num_elems = (1 << i);
         //unsigned int num_elems = 8;
